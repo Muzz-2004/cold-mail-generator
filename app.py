@@ -82,6 +82,23 @@ if st.button("Process Job Posting"):
         st.warning("⚠️ Please enter a valid job posting URL.")
         st.stop()
 
+    # Check required runtime components before proceeding
+    missing = []
+    if WebBaseLoader is None:
+        missing.append("langchain (web loader)")
+    if PromptTemplate is None:
+        missing.append("langchain (prompt templates)")
+    if ChatGroq is None:
+        missing.append("langchain-groq (Groq LLM)")
+    if collection is None:
+        # chromadb is optional — we can continue but portfolio matching will be skipped
+        st.info("⚠️ chromadb/collection not available: portfolio matching will be skipped.")
+
+    if missing:
+        st.error("Required packages are not available in this runtime:\n- " + "\n- ".join(missing))
+        st.info("Add them to requirements.txt and redeploy, or run locally with the same Python interpreter.")
+        st.stop()
+
     try:
         # Step 1: Load job page
         os.environ["USER_AGENT"] = (
@@ -89,7 +106,11 @@ if st.button("Process Job Posting"):
             "(KHTML, like Gecko) Chrome/123.0 Safari/537.36"
         )
         loader = WebBaseLoader(url)
-        page_data = loader.load().pop().page_content
+        loaded = loader.load()
+        if not loaded:
+            st.error("Could not load page content from the given URL.")
+            st.stop()
+        page_data = loaded.pop().page_content
 
         # Step 2: Extract job details using Groq LLM
         llm = ChatGroq(
@@ -117,14 +138,26 @@ if st.button("Process Job Posting"):
         st.subheader("📄 Extracted Job Details")
         st.json(job)
 
-        # Step 3: Query ChromaDB for relevant portfolio links
-        skills_text = job.get('skills', '') or job.get('description', '')
-        query_result = collection.query(query_texts=[skills_text], n_results=3)
-        matched_links = [m["links"] for m in query_result["metadatas"][0]]
+        # Step 3: Query ChromaDB for relevant portfolio links (if available)
+        matched_links = []
+        if collection is not None:
+            try:
+                skills_text = job.get('skills', '') or job.get('description', '')
+                query_result = collection.query(query_texts=[skills_text], n_results=3)
+                # query_result["metadatas"] -> list of lists of metadata dicts
+                metas = query_result.get("metadatas", [[]])[0]
+                for m in metas:
+                    if isinstance(m, dict) and m.get("links"):
+                        matched_links.append(m.get("links"))
+            except Exception as e:
+                st.warning(f"Portfolio matching failed: {e}")
 
-        st.subheader("🔗 Matched Portfolio Links")
-        for link in matched_links:
-            st.markdown(f"- [{link}]({link})")
+        if matched_links:
+            st.subheader("🔗 Matched Portfolio Links")
+            for link in matched_links:
+                st.markdown(f"- [{link}]({link})")
+        else:
+            st.info("No portfolio links matched or chromadb not available.")
 
         # Step 4: Generate Cold Email
         prompt_email = PromptTemplate.from_template(
@@ -147,7 +180,7 @@ if st.button("Process Job Posting"):
         chain_email = prompt_email | llm
         email_res = chain_email.invoke({
             "job_description": json.dumps(job, indent=2),
-            "link_list": "\n".join(matched_links)
+            "link_list": "\n".join(matched_links) if matched_links else "No matched links available"
         })
 
         st.subheader("📧 Generated Cold Email")
