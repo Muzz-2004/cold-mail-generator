@@ -1,10 +1,34 @@
 import streamlit as st
 import os, json, uuid, pandas as pd
+
 # try to load dotenv but don't crash if it's not installed in the runtime
 try:
     from dotenv import load_dotenv
 except Exception:
     load_dotenv = None
+
+# optional: langchain / loaders / prompts
+try:
+    from langchain.document_loaders import WebBaseLoader
+    from langchain.prompts import PromptTemplate
+except Exception:
+    WebBaseLoader = None
+    PromptTemplate = None
+    st.warning("langchain not installed: web scraping and prompt templates will be disabled. Install with: python -m pip install langchain")
+
+# optional: Groq chat model
+try:
+    from langchain_groq.chat_models import ChatGroq
+except Exception:
+    ChatGroq = None
+    st.warning("langchain-groq not installed: Groq LLM calls will be disabled. Install with: python -m pip install langchain-groq")
+
+# optional: chromadb for vector store
+try:
+    import chromadb
+except Exception:
+    chromadb = None
+    st.warning("chromadb not installed: portfolio matching will be disabled. Install with: python -m pip install chromadb")
 
 # Load environment variables from .env locally if available
 if load_dotenv:
@@ -17,22 +41,34 @@ groq_api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 st.set_page_config(page_title="AI Cold Email Dashboard", page_icon="🤖", layout="wide")
 st.title("🤖 AI-Powered Job Scraper + Email Generator + Portfolio Matcher")
 
-# Initialize ChromaDB
-client = chromadb.PersistentClient(path="vectorstore")
-collection = client.get_or_create_collection("portfolio")
+# Initialize ChromaDB (only if available)
+if chromadb:
+    try:
+        client = chromadb.PersistentClient(path="vectorstore")
+        collection = client.get_or_create_collection("portfolio")
+    except Exception as e:
+        st.warning(f"Could not initialize chromadb client: {e}")
+        client = None
+        collection = None
+else:
+    client = None
+    collection = None
 
 # Load portfolio CSV once
 if "portfolio_loaded" not in st.session_state:
     if os.path.exists("portfolio.csv"):
         df = pd.read_csv("portfolio.csv")
 
-        if collection.count() == 0:
+        if collection is not None and collection.count() == 0:
             for _, row in df.iterrows():
-                collection.add(
-                    documents=[row["Techstack"]],
-                    metadatas={"links": row["Links"]},
-                    ids=[str(uuid.uuid4())]
-                )
+                try:
+                    collection.add(
+                        documents=[row.get("Techstack", "")],
+                        metadatas=[{"links": row.get("Links", "")}],
+                        ids=[str(uuid.uuid4())]
+                    )
+                except Exception as e:
+                    st.warning(f"Error adding document to collection: {e}")
         st.session_state["portfolio_loaded"] = True
         st.success("✅ Portfolio database loaded successfully!")
     else:
