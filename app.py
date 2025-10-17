@@ -1,14 +1,17 @@
 import streamlit as st
 import os, json, uuid, pandas as pd
-from dotenv import load_dotenv
-from langchain_groq import ChatGroq
-from langchain_core.prompts import PromptTemplate
-from langchain_community.document_loaders import WebBaseLoader
-import chromadb
+# try to load dotenv but don't crash if it's not installed in the runtime
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
 
-# Load environment variables
-load_dotenv()
-groq_api_key = st.secrets["GROQ_API_KEY"]
+# Load environment variables from .env locally if available
+if load_dotenv:
+    load_dotenv()
+
+# Prefer Streamlit secrets, fallback to environment variables
+groq_api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 
 # Initialize Streamlit page
 st.set_page_config(page_title="AI Cold Email Dashboard", page_icon="🤖", layout="wide")
@@ -55,7 +58,7 @@ if st.button("Process Job Posting"):
         # Step 2: Extract job details using Groq LLM
         llm = ChatGroq(
             temperature=0,
-            groq_api_key=os.getenv("GROQ_API_KEY"),
+            groq_api_key=groq_api_key,
             model_name="llama-3.1-8b-instant"
         )
 
