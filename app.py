@@ -1,62 +1,77 @@
-from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
 import streamlit as st
+from langchain_groq import ChatGroq
+from langchain_core.prompts import PromptTemplate
+from dotenv import load_dotenv
+import os
 
+# Load environment variables (.env or Streamlit Secrets)
+load_dotenv()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", st.secrets.get("GROQ_API_KEY", None))
 
-class Chain:
-    def __init__(self):
-        # Load your API key from Streamlit Secrets
-        groq_api_key = st.secrets["GROQ_API_KEY"]
+# Safety check
+if not GROQ_API_KEY:
+    st.error("🚨 Missing GROQ_API_KEY. Add it in Streamlit Cloud → Settings → Secrets.")
+    st.stop()
 
-        # Initialize Groq LLM
-        self.llm = ChatGroq(
-            temperature=0,
-            groq_api_key=groq_api_key,
-            model_name="llama-3.1-70b-vers"
+# Initialize LLM
+llm = ChatGroq(
+    model_name="llama-3.1-8b-instant",
+    temperature=0.7,
+    groq_api_key=GROQ_API_KEY
+)
+
+# Streamlit UI
+st.set_page_config(page_title="Cold Mail Generator", page_icon="📧", layout="centered")
+
+st.title("📧 Cold Email Generator (Powered by Groq Llama 3.1)")
+
+st.markdown("""
+This app helps you generate professional **cold emails** tailored to a job description and your company’s portfolio.
+""")
+
+# User Inputs
+job_description = st.text_area("🧾 Paste Job Description:", height=200)
+links = st.text_area("🔗 Enter Portfolio Links (comma separated):", height=100)
+
+if st.button("✉️ Generate Cold Email"):
+    if not job_description.strip():
+        st.warning("Please enter a job description first.")
+    else:
+        with st.spinner("Generating cold email..."):
+            # Build prompt
+            prompt = PromptTemplate.from_template("""
+            ### JOB DESCRIPTION:
+            {job_description}
+
+            ### INSTRUCTION:
+            You are Muzzammil, a Business Development Executive at **Accenture**, an AI & Software Consulting company.
+            Accenture facilitates seamless business process integration through automated tools, driving scalability,
+            process optimization, cost reduction, and efficiency.
+
+            Write a professional cold email describing Accenture’s capability to fulfill their needs.
+            Also, reference the most relevant ones from the following portfolio links:
+            {link_list}
+
+            ### EMAIL (NO PREAMBLE):
+            """)
+
+            chain = prompt | llm
+            res = chain.invoke({
+                "job_description": job_description,
+                "link_list": links
+            })
+
+        st.success("✅ Email Generated Successfully!")
+        st.markdown("### ✉️ Output:")
+        st.write(res.content)
+
+        # Copy email
+        st.download_button(
+            label="📥 Download Email as Text",
+            data=res.content,
+            file_name="cold_email.txt",
+            mime="text/plain"
         )
 
-    def extract_research_info_chain(self):
-        """
-        Creates a prompt and chain for extracting structured research paper information.
-        """
-        prompt = ChatPromptTemplate.from_template(
-            """
-            Extract the following information from the given text:
-            - Research Title
-            - Problem Statement
-            - Solution
-            - Result
-
-            Return the response in JSON format with keys:
-            ["research_title", "problem_statement", "solution", "result"]
-
-            Text: {text}
-            """
-        )
-
-        return prompt | self.llm
-
-    def generate_cold_mail_chain(self):
-        """
-        Creates a prompt and chain for generating a cold email based on extracted research details.
-        """
-        prompt = ChatPromptTemplate.from_template(
-            """
-            You are a professional email copywriter.
-
-            Write a cold email to a potential collaborator or professor based on the following research details.
-
-            Ensure the tone is:
-            - Polite and respectful
-            - Clearly conveys interest in collaboration or discussion
-            - Avoids generic statements
-            - Well-formatted for readability
-
-            Research Details:
-            {research_details}
-
-            Return only the email body (no JSON).
-            """
-        )
-
-        return prompt | self.llm
+st.markdown("---")
+st.caption("Built by Muzzammil — Powered by Accenture & Groq AI 🚀")
