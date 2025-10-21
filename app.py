@@ -1,54 +1,24 @@
 import streamlit as st
-import os, json, uuid, pandas as pd
+from langchain_groq import ChatGroq
+from langchain_core.prompts import PromptTemplate
+from dotenv import load_dotenv
+import os
 
-# Guard optional imports so app doesn't crash in runtimes where packages aren't installed
-try:
-    from dotenv import load_dotenv
-except Exception:
-    load_dotenv = None
+# Load environment variables (.env or Streamlit Secrets)
+load_dotenv()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", st.secrets.get("GROQ_API_KEY", None))
 
-try:
-    from langchain_groq import ChatGroq
-except Exception:
-    ChatGroq = None
-
-try:
-    from langchain_core.prompts import PromptTemplate
-except Exception:
-    PromptTemplate = None
-
-try:
-    import chromadb
-except Exception:
-    chromadb = None
-
-# Load environment variables (.env or Streamlit Secrets) if available
-if load_dotenv:
-    load_dotenv()
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", None)
-
-# Inform user about missing runtime packages instead of crashing
-if ChatGroq is None:
-    st.warning("Package 'langchain-groq' is not installed in this runtime. LLM features will be disabled. Add 'langchain-groq' to requirements.txt and redeploy.")
-if PromptTemplate is None:
-    st.warning("Package 'langchain-core' (prompts) is not installed. PromptTemplate features will be disabled.")
-if chromadb is None:
-    st.info("Package 'chromadb' not installed: portfolio matching will be disabled.")
-
-# Safety check for API key only when LLM is required
-if ChatGroq is not None and not GROQ_API_KEY:
-    st.error("🚨 Missing GROQ_API_KEY. Add it in Streamlit Cloud → Settings → Secrets or .env.")
+# Safety check
+if not GROQ_API_KEY:
+    st.error("🚨 Missing GROQ_API_KEY. Add it in Streamlit Cloud → Settings → Secrets.")
     st.stop()
 
-# Initialize LLM only if available
-llm = None
-if ChatGroq is not None:
-    llm = ChatGroq(
-        model_name="llama-3.1-8b-instant",
-        temperature=0.7,
-        groq_api_key=GROQ_API_KEY
-    )
+# Initialize LLM
+llm = ChatGroq(
+    model_name="llama-3.1-8b-instant",
+    temperature=0.7,
+    groq_api_key=GROQ_API_KEY
+)
 
 # Streamlit UI
 st.set_page_config(page_title="Cold Mail Generator", page_icon="📧", layout="centered")
