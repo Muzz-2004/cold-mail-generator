@@ -92,4 +92,4 @@ cython_debug/
 
 # OS files
 .DS_Store
-Thum
+Thumbs.db
