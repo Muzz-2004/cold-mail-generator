@@ -26,8 +26,8 @@ if "portfolio_loaded" not in st.session_state:
         if collection.count() == 0:
             for _, row in df.iterrows():
                 collection.add(
-                    documents=[row["Techstack"]],
-                    metadatas={"links": row["Links"]},
+                    documents=[row["Techstack"] if isinstance(row["Techstack"], str) else json.dumps(row["Techstack"])],
+                    metadatas=[{"links": row["Links"]}],
                     ids=[str(uuid.uuid4())]
                 )
         st.session_state["portfolio_loaded"] = True
@@ -79,9 +79,23 @@ if st.button("Process Job Posting"):
         st.json(job)
 
         # Step 3: Query ChromaDB for relevant portfolio links
-        skills_text = job.get('skills', '') or job.get('description', '')
+        skills_text = job.get('skills') or job.get('description') or ""
+        # Normalize to a single string (Chromadb expects str documents/queries)
+        if isinstance(skills_text, (list, tuple)):
+            skills_text = " ".join(str(s) for s in skills_text)
+        elif isinstance(skills_text, dict):
+            skills_text = json.dumps(skills_text)
+        else:
+            skills_text = str(skills_text)
+
         query_result = collection.query(query_texts=[skills_text], n_results=3)
-        matched_links = [m["links"] for m in query_result["metadatas"][0]]
+        matched_links = []
+        metas = query_result.get("metadatas", [[]])[0]
+        for m in metas:
+            if isinstance(m, dict):
+                link = m.get("links") or m.get("link") or m.get("url")
+                if link:
+                    matched_links.append(link)
 
         st.subheader("🔗 Matched Portfolio Links")
         for link in matched_links:
